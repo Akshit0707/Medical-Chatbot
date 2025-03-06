@@ -6,185 +6,126 @@ import requests
 # Load the trained cancer prediction model
 model = joblib.load("cancer_prediction_model.joblib")  # Ensure the file exists
 
-# Mistral AI API Key
+# Mistral AI API Key (Replace with actual key)
 MISTRAL_API_KEY = "vzJHTFVtffxg0bwH04qgXsgM5hgG6iLR"
 MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
 
-# List of 30 symptoms used in cancer prediction
-symptom_names = {
-    "mean_radius": 14.2,
-    "mean_texture": 20.3,
-    "mean_perimeter": 89.8,
-    "mean_area": 462.79019607843145,
-    "mean_smoothness":0.09247764705882354 ,
-    "mean_compactness": 0.08008529411764707,
-    "mean_concavity": 0.04605882352941176,
-    "mean_concave_points": 0.02571764705882353,
-    "mean_symmetry": 0.1740078431372549,
-    "mean_fractal_dimension": 0.06186764705882353,
-    "radius_error": 0.28408235294117645,
-    "texture_error": 1.2203801120448172,
-    "perimeter_error": 2.0003212885154085,
-    "area_error": 21.135148459383736,
-    "smoothness_error": 0.007195901960784316,
-    "compactness_error": 0.02533627450980392,
-    "concavity_error": 0.025996735574229688,
-    "concave_points_error": 0.009857843137254902,
-    "symmetry_error": 0.020584313725490196,
-    "fractal_dimension_error": 0.0036360512605041998,
-    "worst_radius": 13.379801120448189,
-    "worst_texture": 25.691176470588236,
-    "worst_perimeter": 88.34411764705883,
-    "worst_area": 558.8994397759104,
-    "worst_smoothness": 0.1258343137254902,
-    "worst_compactness": 0.1876127450980392,
-    "worst_concavity": 0.1662377226890756,
-    "worst_concave_points": 0.07444411764705882,
-    "worst_symmetry": 0.2702460784313725,
-    "worst_fractal_dimension": 0.0794421568627451
+# Feature questions (with numbering)
+feature_questions = {
+    "mean_radius": "1. Have you noticed any unusual lumps or growths in your body?",
+    "mean_texture": "2. Have you experienced any skin texture changes in affected areas?",
+    "mean_perimeter": "3. Have you observed an increase in the size of any lumps over time?",
+    "mean_area": "4. Have you had any swelling in a particular body area?",
+    "mean_smoothness": "5. Does your skin in affected areas feel rough or bumpy?",
+    "mean_compactness": "6. Have you noticed hard or firm masses under your skin?",
+    "mean_concavity": "7. Do any lumps on your body have an inward curve or dimple?",
+    "mean_concave_points": "8. Are there areas on your skin that appear sunken or hollow?",
+    "mean_symmetry": "9. Have you observed an asymmetrical shape in any lumps?",
+    "mean_fractal_dimension": "10. Have you noticed complex patterns or irregular edges in skin changes?",
+    "radius_error": "11. Has the size of any lumps changed unpredictably?",
+    "texture_error": "12. Have you had skin changes that feel different than normal?",
+    "perimeter_error": "13. Has the border of a skin lesion changed over time?",
+    "area_error": "14. Have you experienced spreading of affected areas?",
+    "smoothness_error": "15. Does your skin feel rougher in certain regions?",
+    "compactness_error": "16. Have you noticed tightness or hardness in affected skin?",
+    "concavity_error": "17. Are any affected areas forming depressions or indentations?",
+    "concave_points_error": "18. Are there multiple sunken spots in the same area?",
+    "symmetry_error": "19. Have you noticed an imbalance in affected areas of your body?",
+    "fractal_dimension_error": "20. Do any affected skin areas appear to have jagged or uneven edges?",
+    "worst_radius": "21. Has the largest affected area increased in size recently?",
+    "worst_texture": "22. Has your skin developed a rough or scaly texture?",
+    "worst_perimeter": "23. Have you noticed a significant change in the borders of any lumps?",
+    "worst_area": "24. Has an affected area expanded rapidly?",
+    "worst_smoothness": "25. Has your skin become increasingly rough?",
+    "worst_compactness": "26. Has the density or hardness of any lumps increased?",
+    "worst_concavity": "27. Are there deep indentations in any affected areas?",
+    "worst_concave_points": "28. Are there several deep hollow points in a lump?",
+    "worst_symmetry": "29. Have you noticed a significant asymmetry in any affected areas?",
+    "worst_fractal_dimension": "30. Do affected skin areas have highly irregular edges?"
 }
 
+# Initialize session state
+if "question_index" not in st.session_state:
+    st.session_state.question_index = 0
+if "responses" not in st.session_state:
+    st.session_state.responses = {}
+
+# Convert questions dictionary to a list
+feature_keys = list(feature_questions.keys())
+
+# Ensure index is within range
+if st.session_state.question_index >= len(feature_keys):
+    st.session_state.question_index = len(feature_keys) - 1  
+
+# Get current question
+current_feature = feature_keys[st.session_state.question_index]
+current_question = feature_questions[current_feature]
+
+# Streamlit UI
+st.markdown("<h1 style='text-align: center;'>🩺 AI-Powered Medical Chatbot</h1>", unsafe_allow_html=True)
+st.markdown("<h3 style='text-align: center;'>Ask me anything about health or predict your cancer risk!</h3>", unsafe_allow_html=True)
+
+# AI Chatbot: User can ask any health-related question
+user_input = st.text_input("💬 Ask me a health-related question:")
+
 # Function to interact with Mistral AI
-def ask_mistral(question, context="general"):
-    """Sends user input to Mistral API and retrieves a response."""
-    headers = {
-        "Authorization": f"Bearer {MISTRAL_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    # Define role-based prompts
-    if context == "cancer":
-        system_prompt = "You are an expert oncologist. Only provide responses related to cancer prediction and medical advice. Avoid discussing any unrelated health topics."
-    else:
-        system_prompt = "You are a helpful AI medical assistant providing general health advice."
-
+def ask_mistral(question):
+    headers = {"Authorization": f"Bearer {MISTRAL_API_KEY}", "Content-Type": "application/json"}
     data = {
         "model": "mistral-tiny",
         "messages": [
-            {"role": "system", "content": system_prompt},
+            {"role": "system", "content": "You are an AI medical assistant providing health advice."},
             {"role": "user", "content": question}
         ]
     }
-
     response = requests.post(MISTRAL_URL, headers=headers, json=data)
-
-    if response.status_code == 200:
-        return response.json()["choices"][0]["message"]["content"]
-    else:
-        return "Error fetching response from Mistral AI."
-
-# Custom CSS for aesthetics
-st.markdown("""
-    <style>
-        /* Ensure all text is black */
-        html, body, [class*="st-"] {
-            color: white !important;
-            font-family: 'Arial', sans-serif;
-        }
-
-        /* Improve main container look */
-        .stApp {
-            background-color: light grey; /* Light grey background for a soft look */
-            padding: 20px;
-        }
-
-        /* Center content with a subtle white card */
-        .main-container {
-            background: white;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-            max-width: 800px;
-            margin: auto;
-        }
-
-        /* Improve headings */
-        h1, h2, h3 {
-            font-weight: bold;
-            text-align: center;
-        }
-
-        /* Style buttons */
-        .stButton > button {
-            background-color: #007BFF !important;
-            color: white !important;
-            font-size: 16px;
-            padding: 12px;
-            border-radius: 8px;
-            border: none;
-            width: 100%;
-            cursor: pointer;
-        }
-
-        .stButton > button:hover {
-            background-color: #0056b3 !important;
-        }
-
-        /* Improve input fields */
-        .stTextInput > div, .stNumberInput > div {
-            border-radius: 8px !important;
-            font-size: 16px !important;
-        }
-
-        /* Make radio buttons and checkboxes more modern */
-        .stRadio > label, .stCheckbox > label {
-            font-size: 16px;
-            font-weight: 500;
-        }
-    </style>
-""", unsafe_allow_html=True)
-
-   
-# Streamlit UI
-st.markdown('<div class="main">', unsafe_allow_html=True)
-st.markdown('<h1 class="title">🩺 AI-Powered Medical Chatbot</h1>', unsafe_allow_html=True)
-st.markdown('<h3 class="subheader">Ask me anything about health or predict your cancer risk!</h3>', unsafe_allow_html=True)
-
-# User input for general health questions
-user_input = st.text_input("💬 Ask me a health-related question:")
+    return response.json()["choices"][0]["message"]["content"] if response.status_code == 200 else "Error fetching AI response."
 
 if user_input:
     response = ask_mistral(user_input)
     st.write(f"🤖 **AI:** {response}")
+    
+st.markdown("<hr>", unsafe_allow_html=True)  # Divider line
 
+# **Cancer Prediction Section**
+st.markdown("<h2 style='text-align: center;'>🔬 AI Cancer Prediction Chatbot</h2>", unsafe_allow_html=True)
+st.write("Hi! I'm an AI chatbot here to assess your cancer risk. Let's begin!")
 
-if user_input:
-    response = ask_mistral(user_input)
-    st.write(f"🤖 **AI:** {response}")
+# Show progress
+st.write(f"**Question {st.session_state.question_index + 1} of {len(feature_questions)}**")
 
-st.subheader("🔬 Cancer Prediction")
+# Display the current question
+response = st.radio(current_question, ("No", "Yes"), key=current_feature)
 
-st.write("Please provide the values for the following medical symptoms:")
+# "Next" button
+if st.button("Next"):
+    st.session_state.responses[current_feature] = 1 if response == "Yes" else 0  # Store response
+    if st.session_state.question_index < len(feature_keys) - 1:
+        st.session_state.question_index += 1  # Move to next question
+    st.experimental_rerun()  # Refresh UI to show next question
 
-# Collect user inputs for 30 symptoms
-symptoms = []
-for symptom in symptom_names:
-    value = st.number_input(f"{symptom.replace('_', ' ').capitalize()}:", min_value=0.0, step=0.1)
-    symptoms.append(value)
+# Predict Cancer Risk Button (only when all questions are answered)
+if len(st.session_state.responses) == len(feature_questions):
+    if st.button("Predict Cancer Risk"):
+        responses = list(st.session_state.responses.values())
 
-# Convert input into a numpy array
-input_data = np.array(symptoms).reshape(1, -1)
+        # Define high-risk features
+        high_risk_features = ["mean_radius", "worst_radius", "mean_perimeter", "worst_perimeter", "mean_area", "worst_area"]
 
-# Predict button
-if st.button("🔍 Predict Cancer Risk"):
-    try:
-        prediction = model.predict(input_data)[0]
-        probability = model.predict_proba(input_data)[0][1]
+        # Calculate risk scores
+        risk_score = sum(responses)  # Total Yes responses
+        high_risk_score = sum(
+            1 for i, feature in enumerate(feature_questions.keys()) if feature in high_risk_features and responses[i] == 1
+        )
 
-        # Use LLM to explain the result
-        if prediction == 1:
-            result_text = f"⚠️ High Cancer Risk Detected! (Probability: {probability:.2f})"
-            advice = ask_mistral("What should I do if I have a high risk of cancer?")
-            st.error(result_text)
+        # Determine cancer risk
+        if high_risk_score >= 3 or risk_score >= 10:
+            result = "⚠️ High Cancer Risk - Consult a Doctor"
+        elif risk_score >= 5:
+            result = "⚠️ Moderate Cancer Risk - Further Tests Recommended"
         else:
-            result_text = f"✅ No Cancer Detected! (Probability: {probability:.2f})"
-            advice = ask_mistral("How can I maintain good health to prevent cancer?")
-            st.success(result_text)
+            result = "✅ Low Cancer Risk - No Immediate Concern"
 
-        # Display AI-generated medical advice
-        st.write(f"🤖 AI Advice: {advice}")
-
-    except Exception as e:
-        st.error(f"⚠️ Error in prediction: {e}")
-        
-st.markdown("</div>", unsafe_allow_html=True)
+        # Display Result
+        st.subheader("📊 Prediction Result:")
+        st.write(result)
